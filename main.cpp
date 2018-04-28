@@ -461,12 +461,20 @@ never_inline bool ape_machine(const u8 * buf, UNUSED size_t len, ParsedJson & pj
         tape_locs[i] = i*MAX_TAPE_ENTRIES;
         states[i] = START_STATE;
     }
-
+    u32 i = NUM_RESERVED_NODES;
+    u32 nextidx;
+    u8 nextc;
+    if( i < pj.n_structural_indexes) {
+      nextidx = pj.structural_indexes[i];
+      nextc = buf[nextidx];
+    }
     u32 error_sump = 0;
     u32 old_state = 0; // experimental
-    for (u32 i = NUM_RESERVED_NODES; i < pj.n_structural_indexes; i++) {
-        u32 idx = pj.structural_indexes[i];
-        u8 c = buf[idx];
+    for (; i + 1 < pj.n_structural_indexes; i++) {
+        u32 idx = nextidx;
+        u8 c = nextc;
+        nextidx = pj.structural_indexes[i + 1];
+        nextc = buf[nextidx];
 #ifdef DEBUG
         cout << "i: " << i << " idx: " << idx << " c " << c << "\n";
 #endif
@@ -496,6 +504,39 @@ never_inline bool ape_machine(const u8 * buf, UNUSED size_t len, ParsedJson & pj
         cout << "post " << states[depth] << "\n";
 #endif
     }
+    if(i < pj.n_structural_indexes) {
+        u32 idx = nextidx;
+        u8 c = nextc;
+#ifdef DEBUG
+        cout << "i: " << i << " idx: " << idx << " c " << c << "\n";
+#endif
+        // TAPE MACHINE
+
+        u32 control = char_control[c];
+        s8 depth_adjust = get_depth_adjust(control);
+        bool take_uptape = is_uptape(control);
+        u8 write_size = get_write_size(control)/4;
+        depth += depth_adjust;
+#ifdef DEBUG
+        cout << "TAPE MACHINE: depth change " << (s32)depth_adjust << " take_uptape: " << (u32)take_uptape 
+             << " write_size " << (u32)write_size << " current_depth: " << depth << "\n";  
+#endif
+        u32 uptape = tape_locs[depth+1];
+        tape[tape_locs[depth]] = take_uptape ? uptape : idx;
+        tape_locs[depth] += write_size;
+
+        // STATE MACHINE
+#ifdef DEBUG
+        cout << "STATE MACHINE: error_sump: " << error_sump << " old state " << old_state  << " disallowed_exit[old_state][c]: " << disallow_exit[old_state][c] << "\n";
+        cout << "STATE MACHINE: state[depth] pre " << states[depth] << " ";
+#endif
+        error_sump |= disallow_exit[old_state][c];
+        old_state  = states[depth] = trans[states[depth]][c];
+#ifdef DEBUG
+        cout << "post " << states[depth] << "\n";
+#endif
+    }
+
 
 #ifdef DEBUG
     for (u32 i = 0; i < MAX_DEPTH; i++) {
