@@ -1,7 +1,6 @@
-#include <cstdint>
 #include "simdjson/portability.h"
+#include <cstdint>
 #ifndef __AVX2__
-
 
 static uint8_t jump_table[256 * 3] = {
     0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0,
@@ -73,7 +72,8 @@ static uint64_t cmp_mask_against_input_mini(__m256i input_lo, __m256i input_hi,
 }
 
 // take input from buf and remove useless whitespace, input and output can be
-// the same, result is null terminated, return the string length (minus the null termination)
+// the same, result is null terminated, return the string length (minus the null
+// termination)
 size_t jsonminify(const uint8_t *buf, size_t len, uint8_t *out) {
   // Useful constant masks
   const uint64_t even_bits = 0x5555555555555555ULL;
@@ -97,8 +97,8 @@ size_t jsonminify(const uint8_t *buf, size_t len, uint8_t *out) {
       uint64_t odd_starts = start_edges & ~even_start_mask;
       uint64_t even_carries = bs_bits + even_starts;
       uint64_t odd_carries;
-      bool iter_ends_odd_backslash = add_overflow(
-          bs_bits, odd_starts, &odd_carries);
+      bool iter_ends_odd_backslash =
+          add_overflow(bs_bits, odd_starts, &odd_carries);
       odd_carries |= prev_iter_ends_odd_backslash;
       prev_iter_ends_odd_backslash = iter_ends_odd_backslash ? 0x1ULL : 0x0ULL;
       uint64_t even_carry_ends = even_carries & ~bs_bits;
@@ -112,7 +112,10 @@ size_t jsonminify(const uint8_t *buf, size_t len, uint8_t *out) {
       uint64_t quote_mask = _mm_cvtsi128_si64(_mm_clmulepi64_si128(
           _mm_set_epi64x(0ULL, quote_bits), _mm_set1_epi8(0xFF), 0));
       quote_mask ^= prev_iter_inside_quote;
-      prev_iter_inside_quote = (uint64_t)((int64_t)quote_mask >> 63);// might be undefined behavior, should be fully defined in C++20, ok according to John Regher from Utah University
+      prev_iter_inside_quote = (uint64_t)(
+          (int64_t)quote_mask >>
+          63); // might be undefined behavior, should be fully defined in C++20,
+               // ok according to John Regher from Utah University
       const __m256i low_nibble_mask = _mm256_setr_epi8(
           //  0                           9  a   b  c  d
           16, 0, 0, 0, 0, 0, 0, 0, 0, 8, 12, 1, 2, 9, 0, 0, 16, 0, 0, 0, 0, 0,
@@ -180,10 +183,11 @@ size_t jsonminify(const uint8_t *buf, size_t len, uint8_t *out) {
     uint64_t odd_starts = start_edges & ~even_start_mask;
     uint64_t even_carries = bs_bits + even_starts;
     uint64_t odd_carries;
-    //bool iter_ends_odd_backslash = 
-	add_overflow( bs_bits, odd_starts, &odd_carries);
+    // bool iter_ends_odd_backslash =
+    add_overflow(bs_bits, odd_starts, &odd_carries);
     odd_carries |= prev_iter_ends_odd_backslash;
-    //prev_iter_ends_odd_backslash = iter_ends_odd_backslash ? 0x1ULL : 0x0ULL; // we never use it
+    // prev_iter_ends_odd_backslash = iter_ends_odd_backslash ? 0x1ULL : 0x0ULL;
+    // // we never use it
     uint64_t even_carry_ends = even_carries & ~bs_bits;
     uint64_t odd_carry_ends = odd_carries & ~bs_bits;
     uint64_t even_start_odd_end = even_carry_ends & odd_bits;
@@ -195,7 +199,8 @@ size_t jsonminify(const uint8_t *buf, size_t len, uint8_t *out) {
     uint64_t quote_mask = _mm_cvtsi128_si64(_mm_clmulepi64_si128(
         _mm_set_epi64x(0ULL, quote_bits), _mm_set1_epi8(0xFF), 0));
     quote_mask ^= prev_iter_inside_quote;
-    // prev_iter_inside_quote = (uint64_t)((int64_t)quote_mask >> 63);// we don't need this anymore
+    // prev_iter_inside_quote = (uint64_t)((int64_t)quote_mask >> 63);// we
+    // don't need this anymore
 
     __m256i mask_20 = _mm256_set1_epi8(0x20); // c==32
     __m256i mask_70 =
@@ -244,7 +249,7 @@ size_t jsonminify(const uint8_t *buf, size_t len, uint8_t *out) {
     memcpy(out, buffer, pop4);
     out += pop4;
   }
-  *out = '\0';// NULL termination
+  *out = '\0'; // NULL termination
   return out - initout;
 }
 
