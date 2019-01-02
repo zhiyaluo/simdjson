@@ -84,8 +84,7 @@ really_inline  bool parse_string(const uint8_t *buf, UNUSED size_t len,
     //through U+001F).
     // https://tools.ietf.org/html/rfc8259
 #ifdef CHECKUNESCAPED
-    __m256i unitsep = _mm256_set1_epi8(0x1F);
-    __m256i unescaped_vec = _mm256_cmpeq_epi8(_mm256_max_epu8(unitsep,v),unitsep);// could do it with saturated subtraction
+    __m256i unescaped_vec = _mm256_subs_epu8(_mm256_set1_epi8(0x9e),v);//_mm256_cmpeq_epi8(_mm256_max_epu8(unitsep,v),unitsep);// could do it with saturated subtraction
 #endif // CHECKUNESCAPED
 
     uint32_t quote_dist = trailingzeroes(quote_bits);
@@ -162,7 +161,7 @@ really_inline  bool parse_string(const uint8_t *buf, UNUSED size_t len,
       dst += 32;
 #ifdef CHECKUNESCAPED
       // check for unescaped chars
-      if(_mm256_testz_si256(unescaped_vec,unescaped_vec) != 1) {
+      if(_mm256_testz_si256(unescaped_vec,_mm256_set1_epi8(0x80)) != 1) {
 #ifdef JSON_TEST_STRINGS // for unit testing
           foundBadString(buf + offset);
 #endif // JSON_TEST_STRINGS
