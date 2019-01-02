@@ -55,6 +55,16 @@ really_inline uint64_t cmp_mask_against_input(__m256i input_lo, __m256i input_hi
   return res_0 | (res_1 << 32);
 }
 
+really_inline uint64_t cmplteq_mask_against_input(__m256i input_lo, __m256i input_hi,
+                                         __m256i mask) {
+  __m256i cmp_res_0 = _mm256_cmpeq_epi8(_mm256_max_epu8(mask,input_lo),mask);
+  uint64_t res_0 = (uint32_t)_mm256_movemask_epi8(cmp_res_0);
+  __m256i cmp_res_1 = _mm256_cmpeq_epi8(_mm256_max_epu8(mask,input_hi),mask);
+  uint64_t res_1 = _mm256_movemask_epi8(cmp_res_1);
+  return res_0 | (res_1 << 32);
+}
+
+
 WARN_UNUSED
 /*never_inline*/ bool find_structural_bits(const uint8_t *buf, size_t len,
                                            ParsedJson &pj) {
@@ -170,6 +180,16 @@ WARN_UNUSED
 
     quote_mask ^= prev_iter_inside_quote;
     prev_iter_inside_quote = (uint64_t)((int64_t)quote_mask >> 63); // right shift of a signed value expected to be well-defined and standard compliant as of C++20, John Regher from Utah U. says this is fine code
+#define CHECKUNESCAPED
+    // All Unicode characters may be placed within the
+    // quotation marks, except for the characters that MUST be escaped:
+    // quotation mark, reverse solidus, and the control characters (U+0000
+    //through U+001F).
+    // https://tools.ietf.org/html/rfc8259
+#ifdef CHECKUNESCAPED
+    uint64_t unescaped = cmplteq_mask_against_input(input_lo, input_hi,_mm256_set1_epi8(0x1F)); 
+    if((unescaped & quote_mask) != 0) return false;
+#endif // CHECKUNESCAPED
 
     // How do we build up a user traversable data structure
     // first, do a 'shufti' to detect structural JSON characters
@@ -334,6 +354,9 @@ WARN_UNUSED
       base += NO_PDEP_WIDTH;
     }
     base = next_base;
+    
+    uint64_t unescaped = cmplteq_mask_against_input(input_lo, input_hi,_mm256_set1_epi8(0x1F)); 
+    if((unescaped & quote_mask) != 0) return false;
     // How do we build up a user traversable data structure
     // first, do a 'shufti' to detect structural JSON characters
     // they are { 0x7b } 0x7d : 0x3a [ 0x5b ] 0x5d , 0x2c
