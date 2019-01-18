@@ -62,7 +62,7 @@ WARN_UNUSED
   size_t lenminus64 = len < 64 ? 0 : len - 64;
   size_t idx = 0;
   uint64_t structurals = 0;
-  for (; idx < lenminus64; idx += 64) {
+  for (; idx <= lenminus64; idx += 64) {
 #ifndef _MSC_VER
     __builtin_prefetch(buf + idx + 128);
 #endif
@@ -87,16 +87,26 @@ WARN_UNUSED
     ////////////////////////////////////////////////////////////////////////////////////////////
     //     Step 1: detect odd sequences of backslashes
     ////////////////////////////////////////////////////////////////////////////////////////////
-
+    printf("%.64s\n",buf + idx );
     uint64_t bs_bits =
         cmp_mask_against_input(input_lo, input_hi, _mm256_set1_epi8('\\'));
+
+    dumpbits_always(bs_bits, "bs_bits");
     uint64_t start_edges = bs_bits & ~(bs_bits << 1);
+    dumpbits_always(start_edges, "start_edges = bs_bits & ~(bs_bits << 1)");
     // flip lowest if we have an odd-length run at the end of the prior
     // iteration
     uint64_t even_start_mask = even_bits ^ prev_iter_ends_odd_backslash;
+    dumpbits_always(even_start_mask, "even_start_mask = even_bits ^ prev_iter_ends_odd_backslash");
+
     uint64_t even_starts = start_edges & even_start_mask;
+    dumpbits_always(even_starts, "even_starts");
+
     uint64_t odd_starts = start_edges & ~even_start_mask;
+    dumpbits_always(odd_starts, "odd_starts = start_edges & ~even_start_mask");
+
     uint64_t even_carries = bs_bits + even_starts;
+    dumpbits_always(even_carries, "even_carries = bs_bits + even_starts");
 
     uint64_t odd_carries;
     // must record the carry-out of our odd-carries out of bit 63; this
@@ -104,17 +114,32 @@ WARN_UNUSED
     // should be flipped
     bool iter_ends_odd_backslash =
 		add_overflow(bs_bits, odd_starts, &odd_carries);
+    //dumpbits_always(bs_bits, "bs_bits");
+    //dumpbits_always(odd_starts, "odd_starts");
+    dumpbits_always(iter_ends_odd_backslash, "odd_starts + bs_bits overflow");
+    dumpbits_always(odd_carries, "odd_carries = odd_starts + bs_bits");
 
     odd_carries |=
         prev_iter_ends_odd_backslash; // push in bit zero as a potential end
                                       // if we had an odd-numbered run at the
                                       // end of the previous iteration
+    dumpbits_always(odd_carries, "odd_carries");
+
     prev_iter_ends_odd_backslash = iter_ends_odd_backslash ? 0x1ULL : 0x0ULL;
     uint64_t even_carry_ends = even_carries & ~bs_bits;
+    dumpbits_always(even_carry_ends, "even_carry_ends = even_carries & ~bs_bits");
+
     uint64_t odd_carry_ends = odd_carries & ~bs_bits;
+    dumpbits_always(odd_carry_ends, "odd_carry_ends = odd_carries & ~bs_bits ");
+
     uint64_t even_start_odd_end = even_carry_ends & odd_bits;
+    dumpbits_always(even_start_odd_end, "even_start_odd_end= even_carry_ends & odd_bits");
+
     uint64_t odd_start_even_end = odd_carry_ends & even_bits;
+    dumpbits_always(odd_start_even_end, "odd_start_even_end = odd_carry_ends & even_bits");
+
     uint64_t odd_ends = even_start_odd_end | odd_start_even_end;
+    dumpbits_always(odd_ends, "odd_ends = = even_start_odd_end | odd_start_even_end");
 
     ////////////////////////////////////////////////////////////////////////////////////////////
     //     Step 2: detect insides of quote pairs
@@ -122,10 +147,15 @@ WARN_UNUSED
 
     uint64_t quote_bits =
         cmp_mask_against_input(input_lo, input_hi, _mm256_set1_epi8('"'));
+    dumpbits_always(quote_bits, "quote_bits raw");
+
     quote_bits = quote_bits & ~odd_ends;
+    dumpbits_always(quote_bits, "quote_bits after removing odd ends");
+
     uint64_t quote_mask = _mm_cvtsi128_si64(_mm_clmulepi64_si128(
         _mm_set_epi64x(0ULL, quote_bits), _mm_set1_epi8(0xFF), 0));
 
+    dumpbits_always(quote_mask, "quote_mask");
 
 
     uint32_t cnt = hamming(structurals);
@@ -152,6 +182,8 @@ WARN_UNUSED
     base = next_base;
 
     quote_mask ^= prev_iter_inside_quote;
+    dumpbits_always(quote_mask, "quote_mask");
+
     prev_iter_inside_quote = (uint64_t)((int64_t)quote_mask >> 63); // right shift of a signed value expected to be well-defined and standard compliant as of C++20, John Regher from Utah U. says this is fine code
 
     // How do we build up a user traversable data structure
@@ -193,6 +225,7 @@ WARN_UNUSED
     uint64_t structural_res_0 = (uint32_t)_mm256_movemask_epi8(tmp_lo);
     uint64_t structural_res_1 = _mm256_movemask_epi8(tmp_hi);
     structurals = ~(structural_res_0 | (structural_res_1 << 32));
+    dumpbits_always(structurals, "structurals from classifier");
 
     // this additional mask and transfer is non-trivially expensive,
     // unfortunately
@@ -204,12 +237,16 @@ WARN_UNUSED
     uint64_t ws_res_0 = (uint32_t)_mm256_movemask_epi8(tmp_ws_lo);
     uint64_t ws_res_1 = _mm256_movemask_epi8(tmp_ws_hi);
     uint64_t whitespace = ~(ws_res_0 | (ws_res_1 << 32));
+    dumpbits_always(whitespace, "whitespace from classifier");
+
     // mask off anything inside quotes
     structurals &= ~quote_mask;
+    dumpbits_always(structurals, "structurals=structurals &= ~quote_mask");
 
     // add the real quote bits back into our bitmask as well, so we can
     // quickly traverse the strings we've spent all this trouble gathering
     structurals |= quote_bits;
+    dumpbits_always(structurals, "structurals, structurals |= quote_bits");
 
     // Now, establish "pseudo-structural characters". These are non-whitespace
     // characters that are (a) outside quotes and (b) have a predecessor that's
@@ -226,11 +263,15 @@ WARN_UNUSED
     prev_iter_ends_pseudo_pred = pseudo_pred >> 63;
     uint64_t pseudo_structurals =
         shifted_pseudo_pred & (~whitespace) & (~quote_mask);
+    dumpbits_always(pseudo_structurals, "pseudo_structurals");
+
     structurals |= pseudo_structurals;
+    dumpbits_always(structurals, "structurals|= pseudo_structurals");
 
     // now, we've used our close quotes all we need to. So let's switch them off
     // they will be off in the quote mask and on in quote bits.
     structurals &= ~(quote_bits & ~quote_mask);
+    dumpbits_always(structurals, "structurals &= ~(quote_bits & ~quote_mask)");
 
     //*(uint64_t *)(pj.structurals + idx / 8) = structurals;
   }
@@ -265,9 +306,9 @@ WARN_UNUSED
     ////////////////////////////////////////////////////////////////////////////////////////////
     //     Step 1: detect odd sequences of backslashes
     ////////////////////////////////////////////////////////////////////////////////////////////
-
     uint64_t bs_bits =
         cmp_mask_against_input(input_lo, input_hi, _mm256_set1_epi8('\\'));
+
     uint64_t start_edges = bs_bits & ~(bs_bits << 1);
     // flip lowest if we have an odd-length run at the end of the prior
     // iteration
